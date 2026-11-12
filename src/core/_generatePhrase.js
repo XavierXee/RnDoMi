@@ -31,6 +31,16 @@ function getRandomInt(min, max) {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+function randomList(count) {
+    var list = [];
+
+    for (var i = 0; i < count; i++) {
+        list.push(Math.random());
+    }
+
+    return list;
+}
+
 // ----------------------------
 // SCALE BUILDER
 // ----------------------------
@@ -116,6 +126,7 @@ function generatePhraseNotes() {
                 pitch: STATE.root + pitch + getRandomInt(STATE.octaveMin, STATE.octavesMax) * 12,
                 velocity: STATE.rhythm[i].velocity,
                 duration: STATE.rhythm[i].duration,
+                ccRandom: randomList(STATE.ccSlots ? STATE.ccSlots.randoms : 0)
             });
         } else {
             phrase.push(STATE.rhythm[i]);

@@ -81,16 +81,32 @@ var defaultState = {
     offsetLowerBoundary: 0,
     offsetUpperBoundary: 0,
 
-    // Enveloppe
-    envSIN: null,
-    envSAW: null,
-    envTRI: null,
-    envSQR: null,
+    // MIDI CC
+    ccOn: true,
 
     // Generated data
     rhythm: [],
     phrase: []
 };
+
+var ENVELOPE_SLOTS = 4;
+var RANDOM_SLOTS = 4;
+var FIRST_CC = 20;
+
+for (var n = 1; n <= ENVELOPE_SLOTS; n++) {
+    defaultState["env" + n + "On"] = false;
+    defaultState["env" + n + "Shape"] = 0;
+    defaultState["env" + n + "Cc"] = FIRST_CC + n - 1;
+    defaultState["env" + n + "Min"] = 1;
+    defaultState["env" + n + "Max"] = 127;
+}
+
+for (n = 1; n <= RANDOM_SLOTS; n++) {
+    defaultState["rnd" + n + "On"] = false;
+    defaultState["rnd" + n + "Cc"] = FIRST_CC + ENVELOPE_SLOTS + n - 1;
+    defaultState["rnd" + n + "Min"] = 1;
+    defaultState["rnd" + n + "Max"] = 127;
+}
 
 for (var key in defaultState) {
     STATE[key] = defaultState[key];
@@ -99,6 +115,8 @@ for (var key in defaultState) {
 noteLists.custom = noteLists[defaultState.scaleName].slice();
 
 STATE.noteLists = noteLists;
+STATE.ccSlots = { envelopes: ENVELOPE_SLOTS, randoms: RANDOM_SLOTS };
+STATE.envelopeShapes = ["sine", "triangle", "sawUp", "sawDown", "square"];
 
 STATE_DICT.parse(JSON.stringify(STATE));
 

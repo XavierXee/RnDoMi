@@ -25,11 +25,15 @@ function bang() {
             }
         }
 
-        if (
+        var played = !!(
             STATE.phrase[currentStep] &&
             currentStep > STATE.offsetLowerBoundary - 1 &&
             currentStep < STATE.phraseLength - STATE.offsetUpperBoundary
-        ) {
+        );
+
+        messnamed("CC_STEP", "onStep", currentStep, played ? 1 : 0);
+
+        if (played) {
             messnamed("PLAY_NOTE", [
                 STATE.phrase[currentStep].pitch,
                 STATE.phrase[currentStep].velocity,
