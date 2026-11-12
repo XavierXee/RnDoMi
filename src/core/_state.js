@@ -82,7 +82,8 @@ var defaultState = {
     offsetUpperBoundary: 0,
 
     // MIDI CC
-    ccOn: true,
+    envOn: true,
+    rndCcOn: true,
 
     // Generated data
     rhythm: [],
@@ -102,10 +103,10 @@ for (var n = 1; n <= ENVELOPE_SLOTS; n++) {
 }
 
 for (n = 1; n <= RANDOM_SLOTS; n++) {
-    defaultState["rnd" + n + "On"] = false;
-    defaultState["rnd" + n + "Cc"] = FIRST_CC + ENVELOPE_SLOTS + n - 1;
-    defaultState["rnd" + n + "Min"] = 1;
-    defaultState["rnd" + n + "Max"] = 127;
+    defaultState["rndCc" + n + "On"] = false;
+    defaultState["rndCc" + n + "Number"] = FIRST_CC + ENVELOPE_SLOTS + n - 1;
+    defaultState["rndCc" + n + "Min"] = 1;
+    defaultState["rndCc" + n + "Max"] = 127;
 }
 
 for (var key in defaultState) {
@@ -116,7 +117,10 @@ noteLists.custom = noteLists[defaultState.scaleName].slice();
 
 STATE.noteLists = noteLists;
 STATE.ccSlots = { envelopes: ENVELOPE_SLOTS, randoms: RANDOM_SLOTS };
-STATE.envelopeShapes = ["sine", "triangle", "sawUp", "sawDown", "square"];
+STATE.envelopeShapes = [
+    "sine", "triangle", "sawUp", "sawDown", "square",
+    "reverseSquare", "reverseSine", "logUp", "logDown", "expUp", "expDown"
+];
 
 STATE_DICT.parse(JSON.stringify(STATE));
 

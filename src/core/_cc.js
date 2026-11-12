@@ -5,13 +5,33 @@ outlets = 0;
 var STATE = new Global("GLOBAL_STATE");
 
 var CHANNEL = 1;
+var CURVE = 4;
+var CURVE_SPAN = Math.exp(CURVE) - 1;
+
+function sine(p) {
+    return (Math.sin(p * Math.PI * 2) + 1) / 2;
+}
+
+function expUp(p) {
+    return (Math.exp(CURVE * p) - 1) / CURVE_SPAN;
+}
+
+function logUp(p) {
+    return Math.log(1 + CURVE_SPAN * p) / CURVE;
+}
 
 var SHAPES = {
-    sine: function (p) { return (Math.sin(p * Math.PI * 2) + 1) / 2; },
+    sine: sine,
     triangle: function (p) { return p < 0.5 ? p * 2 : 2 - p * 2; },
     sawUp: function (p) { return p; },
     sawDown: function (p) { return 1 - p; },
-    square: function (p) { return p < 0.5 ? 1 : 0; }
+    square: function (p) { return p < 0.5 ? 1 : 0; },
+    reverseSquare: function (p) { return p < 0.5 ? 0 : 1; },
+    reverseSine: function (p) { return 1 - sine(p); },
+    logUp: logUp,
+    logDown: function (p) { return logUp(1 - p); },
+    expUp: expUp,
+    expDown: function (p) { return expUp(1 - p); }
 };
 
 var lastSent = {};
@@ -46,7 +66,7 @@ function randomValues(note) {
 }
 
 function randomValue(n, note) {
-    var p = "rnd" + n;
+    var p = "rndCc" + n;
 
     return scale(randomValues(note)[n - 1], STATE[p + "Min"], STATE[p + "Max"]);
 }
@@ -69,11 +89,7 @@ function onStep(step, played) {
         lastSent = {};
     }
 
-    if (!STATE.ccOn) {
-        return;
-    }
-
-    for (n = 1; n <= STATE.ccSlots.envelopes; n++) {
+    for (n = 1; STATE.envOn && n <= STATE.ccSlots.envelopes; n++) {
         slot = "env" + n;
         if (!STATE[slot + "On"]) {
             continue;
@@ -86,20 +102,27 @@ function onStep(step, played) {
     }
 
     note = played && STATE.phrase && STATE.phrase[step];
-    if (!note) {
+    if (!note || !STATE.rndCcOn) {
         return;
     }
 
+    var sent = false;
+
     for (n = 1; n <= STATE.ccSlots.randoms; n++) {
-        slot = "rnd" + n;
+        slot = "rndCc" + n;
         if (STATE[slot + "On"]) {
-            send(slot, STATE[slot + "Cc"], randomValue(n, note));
+            send(slot, STATE["rndCc" + n + "Number"], randomValue(n, note));
+            sent = true;
         }
+    }
+
+    if (sent) {
+        messnamed("RANDOM_CC_SENT", "onRandomSent");
     }
 }
 
 function onStateChanged(key) {
-    if (/^(env|rnd)\d/.test(key)) {
+    if (/^(env|rndCc)\d/.test(key)) {
         lastSent = {};
     }
 }

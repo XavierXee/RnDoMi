@@ -8,15 +8,16 @@ mgraphics.autofill = 0;
 
 var STATE = new Global("GLOBAL_STATE");
 
-var ENVELOPE_SLOTS = 4;
-var RANDOM_SLOTS = 4;
+var SLOT_COUNT = 4;
+var PREFIX = "env";
+var MASTER = "envOn";
+var TITLE = "Envelopes";
 var MARGIN = 4;
 var INSET = 6;
 var CORNER = 6;
-var COLUMN_GAP = 14;
 var HEADER_H = 14;
 var TOGGLE_W = 10;
-var SHAPE_W = 44;
+var SHAPE_W = 50;
 var CC_W = 34;
 var PREVIEW_W = 24;
 var HANDLE = 3.5;
@@ -25,7 +26,12 @@ var SWITCH_W = 18;
 var SWITCH_H = 10;
 var FONT = "Arial";
 var FONT_SIZE = 9;
-var SHAPE_LABELS = { sine: "sine", triangle: "triangle", sawUp: "saw up", sawDown: "saw down", square: "square" };
+var SHAPE_LABELS = {
+    sine: "sine", triangle: "triangle", sawUp: "saw up", sawDown: "saw down", square: "square",
+    reverseSquare: "rev square", reverseSine: "rev sine", logUp: "log up", logDown: "log down", expUp: "exp up", expDown: "exp down"
+};
+var CURVE = 4;
+var CURVE_SPAN = Math.exp(CURVE) - 1;
 
 var COLOR_BG = [0.12, 0.12, 0.12, 1];
 var COLOR_BORDER = [1, 1, 1, 1];
@@ -44,14 +50,9 @@ var listeners = {};
 
 function slots() {
     var list = [];
-    var n;
 
-    for (n = 1; n <= ENVELOPE_SLOTS; n++) {
-        list.push({ id: "env" + n, label: "Env " + n, envelope: true });
-    }
-
-    for (n = 1; n <= RANDOM_SLOTS; n++) {
-        list.push({ id: "rnd" + n, label: "Rnd " + n, envelope: false });
+    for (var n = 1; n <= SLOT_COUNT; n++) {
+        list.push({ id: PREFIX + n, label: "Env " + n, envelope: true });
     }
 
     return list;
@@ -60,7 +61,7 @@ function slots() {
 var SLOTS = slots();
 
 function paramKeys() {
-    var keys = ["ccOn"];
+    var keys = [MASTER];
 
     for (var i = 0; i < SLOTS.length; i++) {
         keys.push(SLOTS[i].id + "On", SLOTS[i].id + "Cc", SLOTS[i].id + "Min", SLOTS[i].id + "Max");
@@ -90,7 +91,7 @@ function setValue(key, value) {
 
     if (!warned[key]) {
         warned[key] = true;
-        post("_cc.jsui.js: no object named " + key + ", value not saved\n");
+        post("_envelopes.jsui.js: no object named " + key + ", value not saved\n");
     }
 
     messnamed("SET_PARAM", "setParam", key, value);
@@ -126,17 +127,14 @@ function bind() {
 
 function layout() {
     var pad = MARGIN + INSET;
-    var cw = (size[0] - pad * 2 - COLUMN_GAP) / 2;
-    var rows = Math.max(ENVELOPE_SLOTS, RANDOM_SLOTS);
-    var rh = (size[1] - pad * 2 - HEADER_H) / rows;
+    var cw = size[0] - pad * 2;
+    var rh = (size[1] - pad * 2 - HEADER_H) / SLOT_COUNT;
     var cells = [];
-    var i, column, row, x, y;
+    var i, x, y;
 
     for (i = 0; i < SLOTS.length; i++) {
-        column = SLOTS[i].envelope ? 0 : 1;
-        row = SLOTS[i].envelope ? i : i - ENVELOPE_SLOTS;
-        x = pad + column * (cw + COLUMN_GAP);
-        y = pad + HEADER_H + row * rh;
+        x = pad;
+        y = pad + HEADER_H + i * rh;
 
         cells.push({
             slot: SLOTS[i],
@@ -153,7 +151,7 @@ function layout() {
 
     return {
         border: { x: MARGIN, y: MARGIN, w: size[0] - MARGIN * 2, h: size[1] - MARGIN * 2 },
-        headers: [{ x: pad, label: "Envelopes" }, { x: pad + cw + COLUMN_GAP, label: "Random" }],
+        titleX: pad,
         headerY: pad + FONT_SIZE,
         master: { x: size[0] - pad - SWITCH_W, y: pad, w: SWITCH_W, h: SWITCH_H },
         cells: cells
@@ -299,7 +297,7 @@ function onclick(x, y) {
     drag = null;
 
     if (inside(layout().master, x, y)) {
-        setValue("ccOn", STATE.ccOn ? 0 : 1);
+        setValue(MASTER, STATE[MASTER] ? 0 : 1);
     } else {
         cell = cellAt(x, y);
         if (cell) {
@@ -364,26 +362,34 @@ function text(str, x, y, alignRight) {
     mgraphics.show_text(str);
 }
 
-function shapeAt(index, p) {
-    var name = shapes()[index] || "sine";
-
-    if (name === "triangle") {
-        return p < 0.5 ? p * 2 : 2 - p * 2;
-    }
-
-    if (name === "sawUp") {
-        return p;
-    }
-
-    if (name === "sawDown") {
-        return 1 - p;
-    }
-
-    if (name === "square") {
-        return p < 0.5 ? 1 : 0;
-    }
-
+function sine(p) {
     return (Math.sin(p * Math.PI * 2) + 1) / 2;
+}
+
+function expUp(p) {
+    return (Math.exp(CURVE * p) - 1) / CURVE_SPAN;
+}
+
+function logUp(p) {
+    return Math.log(1 + CURVE_SPAN * p) / CURVE;
+}
+
+var SHAPES = {
+    sine: sine,
+    triangle: function (p) { return p < 0.5 ? p * 2 : 2 - p * 2; },
+    sawUp: function (p) { return p; },
+    sawDown: function (p) { return 1 - p; },
+    square: function (p) { return p < 0.5 ? 1 : 0; },
+    reverseSquare: function (p) { return p < 0.5 ? 0 : 1; },
+    reverseSine: function (p) { return 1 - sine(p); },
+    logUp: logUp,
+    logDown: function (p) { return logUp(1 - p); },
+    expUp: expUp,
+    expDown: function (p) { return expUp(1 - p); }
+};
+
+function shapeAt(index, p) {
+    return (SHAPES[shapes()[index]] || sine)(p);
 }
 
 function paintPreview(cell, active) {
@@ -417,13 +423,13 @@ function paintPreview(cell, active) {
 
 function paintCell(cell) {
     var id = cell.slot.id;
-    var active = !!(STATE.ccOn && STATE[id + "On"]);
+    var active = !!(STATE[MASTER] && STATE[id + "On"]);
     var lo = STATE[id + "Min"];
     var hi = STATE[id + "Max"];
     var output = STATE.ccValues && STATE.ccValues[id];
     var shape;
 
-    faded(STATE[id + "On"] ? COLOR_ACCENT : COLOR_TRACK, STATE.ccOn);
+    faded(STATE[id + "On"] ? COLOR_ACCENT : COLOR_TRACK, STATE[MASTER]);
     dot(cell.x + 3, cell.lineY - 3, 3);
 
     faded(COLOR_LABEL, active);
@@ -484,14 +490,9 @@ function paint() {
     mgraphics.select_font_face(FONT);
     mgraphics.set_font_size(FONT_SIZE);
 
-    for (i = 0; i < l.headers.length; i++) {
-        faded(COLOR_VALUE, STATE.ccOn);
-        text(l.headers[i].label, l.headers[i].x, l.headerY);
-    }
-
-    color(COLOR_LABEL);
-    text("CC", l.master.x - 4, l.headerY, true);
-    paintSwitch(l.master, !!STATE.ccOn);
+    faded(COLOR_VALUE, STATE[MASTER]);
+    text(TITLE, l.titleX, l.headerY);
+    paintSwitch(l.master, !!STATE[MASTER]);
 
     for (i = 0; i < l.cells.length; i++) {
         paintCell(l.cells[i]);
