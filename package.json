@@ -1,0 +1,19 @@
+{
+  "name": "rndomi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "config": {
+    "maxDeployDir": "/Users/xavierdefrutos/Music/Ableton/User Library/Presets/MIDI Effects/Max MIDI Effect/RNDOMI"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.mjs\"",
+    "test:watch": "node --test --watch \"test/**/*.test.mjs\"",
+    "deploy": "node scripts/deploy-max.mjs",
+    "deploy:watch": "node scripts/deploy-max.mjs --watch",
+    "pull:device": "node scripts/deploy-max.mjs --pull"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
