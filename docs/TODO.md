@@ -1,5 +1,4 @@
 To Do
-- implement swing
 - implement adding notes to phrase that stays while the rest regens
 - implement seeding + fix seed text input in the left most panel
 
