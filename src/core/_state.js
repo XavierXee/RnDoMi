@@ -64,6 +64,10 @@ var defaultState = {
     // Groove / rhythm behavior
     swingAmount: 0.0,   // 0 - 1
     drift: 0.0,         // 0 - 1
+    bendRange: 2,       // semitones the instrument bends at full pitch bend
+    driftShape: 0,      // 0 static, 1 glide
+    driftMpe: false,
+    driftDistribution: 1, // 0 uniform, 1 weighted towards small offsets
     chance: 2,          // rhythm density
     tension: 0,         // builds automatically
     tensionMax: 8,
@@ -143,6 +147,10 @@ var paramSpecs = {
     chance: range(1, 8, 1),
     swingAmount: range(0, 1, 0.01),
     drift: range(0, 1, 0.01),
+    bendRange: range(1, 48, 1),
+    driftShape: range(0, 1, 1),
+    driftMpe: TOGGLE,
+    driftDistribution: range(0, 1, 0.01),
     freeze: TOGGLE,
     regenerateRhythm: TOGGLE,
     seed: range(0, 16777215, 1),

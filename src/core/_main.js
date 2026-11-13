@@ -37,7 +37,8 @@ function bang() {
             messnamed("PLAY_NOTE", [
                 STATE.phrase[currentStep].pitch,
                 STATE.phrase[currentStep].velocity,
-                STATE.phrase[currentStep].duration]
+                STATE.phrase[currentStep].duration,
+                STATE.noteChannel || 1]
             );
         }
 

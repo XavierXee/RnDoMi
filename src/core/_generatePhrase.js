@@ -126,7 +126,8 @@ function generatePhraseNotes() {
                 pitch: STATE.root + pitch + getRandomInt(STATE.octaveMin, STATE.octavesMax) * 12,
                 velocity: STATE.rhythm[i].velocity,
                 duration: STATE.rhythm[i].duration,
-                ccRandom: randomList(STATE.ccSlots ? STATE.ccSlots.randoms : 0)
+                ccRandom: randomList(STATE.ccSlots ? STATE.ccSlots.randoms : 0),
+                driftRandom: Math.random() * 2 - 1
             });
         } else {
             phrase.push(STATE.rhythm[i]);

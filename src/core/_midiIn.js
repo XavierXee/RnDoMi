@@ -23,7 +23,8 @@ var CC_MAP = {
     31: "drift",
     32: "freeze",
     33: "regenerateRhythm",
-    34: "generate"
+    34: "generate",
+    35: "bendRange"
 };
 
 var status = 0;
