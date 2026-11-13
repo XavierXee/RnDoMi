@@ -14,7 +14,7 @@ var STATE = new Global("GLOBAL_STATE");
  * @param x number
  */
 function oneInXChance(x) {
-    return Math.random() < (1 / x);
+    return random() < (1 / x);
 }
 
 /**
@@ -28,17 +28,34 @@ function getRandomInt(min, max) {
     min = Math.ceil(min);
     max = Math.floor(max);
 
-    return Math.floor(Math.random() * (max - min + 1)) + min;
+    return Math.floor(random() * (max - min + 1)) + min;
 }
 
-function randomList(count) {
-    var list = [];
+var MAX_SEED = 16777215;
+var random = Math.random;
 
-    for (var i = 0; i < count; i++) {
-        list.push(Math.random());
+// xorshift32: Max's [js] engine predates Math.imul.
+function seededRandom(seed) {
+    var x = (seed * 2654435761 + 1) | 0 || 1;
+
+    return function () {
+        x ^= x << 13;
+        x ^= x >>> 17;
+        x ^= x << 5;
+        return (x >>> 0) / 4294967296;
+    };
+}
+
+// Per-note values come from their own stream so a phrase code can rebuild them from the seed alone.
+function noteRandoms(seed, step) {
+    var next = seededRandom(seed * 64 + step + 1);
+    var cc = [];
+
+    for (var i = 0; i < (STATE.ccSlots ? STATE.ccSlots.randoms : 0); i++) {
+        cc.push(next());
     }
 
-    return list;
+    return { ccRandom: cc, driftRandom: next() * 2 - 1 };
 }
 
 // ----------------------------
@@ -117,17 +134,21 @@ function generatePhraseNotes() {
 
     var phrase = [];
     var noteList = getScaleNotes();
+    var previous = STATE.phrase || [];
 
     for (var i=0; i<STATE.rhythm.length; i++) {
-        if (STATE.rhythm[i]) {
+        // Notes placed by hand on the grid survive regeneration.
+        if (previous[i] && previous[i].locked) {
+            phrase.push(previous[i]);
+        } else if (STATE.rhythm[i]) {
             var pitch = noteList[getRandomInt(0, noteList.length - 1)];
             phrase.push({
                 relativePitch: pitch,
                 pitch: STATE.root + pitch + getRandomInt(STATE.octaveMin, STATE.octavesMax) * 12,
                 velocity: STATE.rhythm[i].velocity,
                 duration: STATE.rhythm[i].duration,
-                ccRandom: randomList(STATE.ccSlots ? STATE.ccSlots.randoms : 0),
-                driftRandom: Math.random() * 2 - 1
+                ccRandom: noteRandoms(STATE.seed, i).ccRandom,
+                driftRandom: noteRandoms(STATE.seed, i).driftRandom
             });
         } else {
             phrase.push(STATE.rhythm[i]);
@@ -138,7 +159,7 @@ function generatePhraseNotes() {
 }
 
 function set_phrase() {
-    if (!STATE.rhythm || !STATE.rhythm.length || STATE.regenerateRhythm) {
+    if (!STATE.rhythm || !STATE.rhythm.length || !STATE.freezeRhythm) {
         STATE.rhythm = generatePhraseRhythm();
     }
 
@@ -152,11 +173,19 @@ function set_tension() {
         STATE.tension = 0;
 }
 
-function generatePhrase() {
+function generatePhrase(seed) {
+    STATE.seed = typeof seed === "number" ? seed : Math.floor(Math.random() * (MAX_SEED + 1));
+    random = seededRandom(STATE.seed);
     set_phrase();
     set_tension();
     messnamed("PHRASE_GENERATED", "onPhraseGenerated");
     messnamed("SAVE_STATE", "saveState");
+}
+
+// An explicit new phrase also renews the rhythm, even while the rhythm is frozen.
+function newPhrase() {
+    STATE.rhythm = [];
+    generatePhrase();
 }
 
 function bang() {

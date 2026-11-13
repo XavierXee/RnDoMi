@@ -49,14 +49,71 @@ test("clicking the note itself removes it", () => {
   assert.equal(state.phrase[0], null);
 });
 
-test("first edit enables freeze and updates the toggle", () => {
-  const { max, grid, state } = setup([null]);
-  grid.editCell(0, 0);
-  assert.equal(state.freeze, true);
-  assert.ok(max.sent.some((m) => m.receiver === "FREEZE_UI" && m.args.join(" ") === "set 1"));
-  max.sent.length = 0;
-  grid.editCell(0, 0);
+test("edited notes are locked and freeze stays off", () => {
+  const { max, grid, state } = setup([null, { relativePitch: 0, pitch: 60, velocity: 90, duration: 100 }]);
+  grid.editCell(0, 4);
+  grid.editCell(1, 7);
+  assert.equal(state.phrase[0].locked, true);
+  assert.equal(state.phrase[1].locked, true);
+  assert.equal(state.freeze, false);
   assert.ok(!max.sent.some((m) => m.receiver === "FREEZE_UI"));
+});
+
+test("removing a locked note gives the step back to the generator", () => {
+  const { grid, state } = setup([null]);
+  grid.editCell(0, 4);
+  grid.editCell(0, 4);
+  assert.equal(state.phrase[0], null);
+});
+
+test("locked notes survive regeneration while the rest changes", () => {
+  const { max, grid, state } = setup(new Array(16).fill(null));
+  Object.assign(state, { phraseLength: 16, chance: 1, rhythm: [] });
+  const gen = max.load("src/core/_generatePhrase.js");
+  gen.generatePhrase();
+  grid.editCell(3, 9);
+  const locked = state.phrase[3];
+  state.phrase[5] = null;
+  gen.generatePhrase();
+  assert.equal(state.phrase[3], locked);
+  assert.equal(state.phrase[3].pitch % 12, 9);
+  assert.notEqual(state.phrase[5], null);
+});
+
+test("a locked rest step keeps its note even if the rhythm has none there", () => {
+  const { max, grid, state } = setup(new Array(4).fill(null));
+  Object.assign(state, { phraseLength: 4, chance: 1e9, rhythm: [] });
+  const gen = max.load("src/core/_generatePhrase.js");
+  grid.editCell(2, 0);
+  gen.generatePhrase();
+  assert.equal(state.phrase.filter(Boolean).length, 1);
+  assert.equal(state.phrase[2].locked, true);
+});
+
+test("locked notes are blue, others orange, the playing note white, and freeze turns everything blue", () => {
+  const notes = [
+    { relativePitch: 0, pitch: 60, velocity: 127, duration: 100 },
+    { relativePitch: 0, pitch: 61, velocity: 127, duration: 100, locked: true },
+    { relativePitch: 0, pitch: 62, velocity: 127, duration: 100 },
+  ];
+  const { grid, state, mgraphics } = setup(notes);
+  const noteColours = () => {
+    const calls = [];
+    mgraphics.set_source_rgba = (...a) => calls.push(a.slice(0, 3).join(","));
+    grid.paint();
+    return calls.slice(-4, -1);
+  };
+  grid.onCurrentStepChanged(2);
+  assert.deepEqual(noteColours(), ["1,0.65,0.2", "0.35,0.85,1", "1,1,1"]);
+  state.freeze = true;
+  assert.deepEqual(noteColours(), ["0.35,0.85,1", "0.35,0.85,1", "1,1,1"]);
+});
+
+test("a halo takes its note's colour", () => {
+  const { grid, state } = setup([{ relativePitch: 0, pitch: 60, velocity: 100, duration: 100, locked: true }, { relativePitch: 0, pitch: 60, velocity: 100, duration: 100 }]);
+  grid.onCurrentStepChanged(0);
+  grid.onCurrentStepChanged(1);
+  assert.equal(grid.halos.map((h) => h.frozen).join(), "true,false");
 });
 
 function clickCell(grid, column, row) {

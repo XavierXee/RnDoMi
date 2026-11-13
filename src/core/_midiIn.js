@@ -6,7 +6,6 @@ var STATE = new Global("GLOBAL_STATE");
 
 var NOTE_ON = 0x90;
 var CONTROL_CHANGE = 0xB0;
-var MAX_SEED = 16777215;
 
 var CC_MAP = {
     20: "scaleName",
@@ -22,7 +21,7 @@ var CC_MAP = {
     30: "swingAmount",
     31: "drift",
     32: "freeze",
-    33: "regenerateRhythm",
+    33: "freezeRhythm",
     34: "generate",
     35: "bendRange"
 };
@@ -136,6 +135,5 @@ function control(key, value) {
 
 function generate() {
     setParam("freeze", 1);
-    setParam("seed", Math.floor(Math.random() * (MAX_SEED + 1)));
-    messnamed("GENERATE_PHRASE", "generatePhrase");
+    messnamed("GENERATE_PHRASE", "newPhrase");
 }

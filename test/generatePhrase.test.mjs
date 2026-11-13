@@ -42,8 +42,8 @@ test("chance 1 fills every step", () => {
   assert.ok(state.phrase.every(Boolean));
 });
 
-test("rhythm is kept across phrases unless regenerateRhythm is set", () => {
-  const { gen, state } = setup({ regenerateRhythm: false });
+test("rhythm is kept across phrases while freezeRhythm is on", () => {
+  const { gen, state } = setup({ freezeRhythm: true });
   gen.generatePhrase();
   const rhythm = state.rhythm;
   gen.generatePhrase();
@@ -65,7 +65,7 @@ test("generatePhrase notifies UI and state saver", () => {
 });
 
 test("regenerating rhythm keeps phrase length", () => {
-  const { gen, state } = setup({ regenerateRhythm: true, phraseLength: 8 });
+  const { gen, state } = setup({ freezeRhythm: false, phraseLength: 8 });
   gen.generatePhrase();
   gen.generatePhrase();
   assert.equal(state.phrase.length, 8);
@@ -76,4 +76,34 @@ test("bang generates a phrase", () => {
   gen.bang();
   assert.equal(state.phrase.length, 8);
   assert.ok(max.sent.some((m) => m.receiver === "PHRASE_GENERATED"));
+});
+
+test("each phrase gets its own seed, and a seed rebuilds the same phrase", () => {
+  const { gen, state } = setup({ freezeRhythm: false });
+  gen.generatePhrase();
+  const seed = state.seed;
+  const first = JSON.stringify(state.phrase);
+  gen.generatePhrase();
+  assert.notEqual(state.seed, seed);
+  gen.generatePhrase(seed);
+  assert.equal(JSON.stringify(state.phrase), first);
+});
+
+test("per-note CC and drift values depend only on the seed and step", () => {
+  const { gen, state } = setup({ freezeRhythm: false });
+  gen.generatePhrase(1234);
+  const i = state.phrase.findIndex(Boolean);
+  const expected = gen.noteRandoms(1234, i);
+  assert.equal(JSON.stringify(state.phrase[i].ccRandom), JSON.stringify(expected.ccRandom));
+  assert.equal(state.phrase[i].driftRandom, expected.driftRandom);
+});
+
+test("an explicit new phrase renews the rhythm even while it is frozen", () => {
+  const { gen, state } = setup({ freezeRhythm: true });
+  gen.generatePhrase();
+  const rhythm = JSON.stringify(state.rhythm);
+  gen.generatePhrase();
+  assert.equal(JSON.stringify(state.rhythm), rhythm);
+  gen.newPhrase();
+  assert.notEqual(JSON.stringify(state.rhythm), rhythm);
 });

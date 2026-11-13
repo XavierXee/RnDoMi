@@ -9,7 +9,7 @@ function setup(overrides = {}) {
   Object.assign(max.state, overrides);
   const midi = max.load("src/core/_midiIn.js");
   const send = (...bytes) => bytes.forEach((b) => midi.msg_int(b));
-  const generated = () => max.sent.filter((m) => m.receiver === "GENERATE_PHRASE").length;
+  const generated = () => max.sent.filter((m) => m.receiver === "GENERATE_PHRASE" && m.args[0] === "newPhrase").length;
   return { max, midi, state: max.state, send, generated };
 }
 
@@ -81,7 +81,7 @@ test("toggles switch on at 64 and above", () => {
   send(0xb0, 32, 64);
   assert.equal(state.freeze, true);
   send(0xb0, 33, 127, 0xb0, 33, 63);
-  assert.equal(state.regenerateRhythm, false);
+  assert.equal(state.freezeRhythm, false);
 });
 
 test("generate fires once when the value crosses 64 upward", () => {
@@ -89,10 +89,8 @@ test("generate fires once when the value crosses 64 upward", () => {
   send(0xb0, 34, 127, 0xb0, 34, 100);
   assert.equal(generated(), 1);
   assert.equal(state.freeze, true);
-  const seed = state.seed;
   send(0xb0, 34, 0, 0xb0, 34, 70);
   assert.equal(generated(), 2);
-  assert.notEqual(state.seed, seed);
 });
 
 test("unmapped CCs and other messages change nothing", () => {

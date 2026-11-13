@@ -8,17 +8,20 @@ mgraphics.autofill = 0;
 
 var STATE = new Global("GLOBAL_STATE");
 
-var WIDTH = 80;
+var WIDTH = 110;
 var MARGIN = 4;
 var INSET = 6;
 var CORNER = 6;
 var GAP = 4;
-var ROW_H = 14;
-var LABEL_H = 11;
-var FIELD_H = 14;
+var TOGGLE_H = 16;
+var FIELD_H = 20;
+var FIELD_LIFT = 5;
+var FIELD_GAP = 3;
+var BUTTON_LINES = ["rnd", "omi"];
+var ICON_W = 12;
 var SWITCH_W = 18;
 var SWITCH_H = 10;
-var MAX_SEED = 16777215;
+var HINT_MS = 1500;
 var INPUT_NAME = "seedInput";
 var FONT = "Arial";
 var FONT_SIZE = 9;
@@ -31,21 +34,29 @@ var COLOR_TRACK = [1, 1, 1, 0.22];
 var COLOR_ACCENT = [0.35, 0.85, 1, 1];
 
 var TOGGLES = [
-    { key: "freeze", label: "Freeze" },
-    { key: "regenerateRhythm", label: "Rhythm" }
+    { key: "freeze", label: "Freeze phrase" },
+    { key: "freezeRhythm", label: "Freeze rhythm" }
 ];
-var PARAMS = ["freeze", "regenerateRhythm", "seed"];
+var PARAMS = ["freeze", "freezeRhythm"];
 
 var size = [WIDTH, 1];
 var pressed = false;
 var warned = {};
 var listeners = {};
+var binding = false;
+var lastFreeze = false;
+var rhythmBeforeFreeze = null;
+var hintUntil = 0;
+
+function now() {
+    return new Date().getTime();
+}
 
 function setValue(key, value) {
     var obj = this.patcher && this.patcher.getnamed(key);
 
     if (obj) {
-        obj.message(key === "seed" ? "float" : "int", value);
+        obj.message("int", value);
         return;
     }
 
@@ -74,6 +85,8 @@ function bind() {
         return;
     }
 
+    binding = true;
+
     for (var i = 0; i < PARAMS.length; i++) {
         obj = this.patcher.getnamed(PARAMS[i]);
 
@@ -82,28 +95,55 @@ function bind() {
             forward(PARAMS[i], obj.getvalueof());
         }
     }
+
+    binding = false;
+    lastFreeze = !!STATE.freeze;
+}
+
+// Freezing the phrase freezes the rhythm too; unfreezing puts the rhythm toggle back as it was.
+function followFreeze() {
+    var frozen = !!STATE.freeze;
+
+    if (binding || frozen === lastFreeze) {
+        return;
+    }
+
+    lastFreeze = frozen;
+
+    if (frozen) {
+        rhythmBeforeFreeze = !!STATE.freezeRhythm;
+        if (!STATE.freezeRhythm) {
+            setValue("freezeRhythm", 1);
+        }
+    } else if (rhythmBeforeFreeze !== null) {
+        if (!!STATE.freezeRhythm !== rhythmBeforeFreeze) {
+            setValue("freezeRhythm", rhythmBeforeFreeze ? 1 : 0);
+        }
+        rhythmBeforeFreeze = null;
+    }
 }
 
 function layout() {
     var pad = MARGIN + INSET;
     var w = size[0] - pad * 2;
-    var fieldY = size[1] - pad - FIELD_H;
-    var rhythmY = fieldY - LABEL_H - GAP - ROW_H;
-    var freezeY = rhythmY - ROW_H;
+    var fieldY = size[1] - pad - FIELD_H - FIELD_LIFT;
+    var togglesY = fieldY - FIELD_GAP - TOGGLE_H * 2;
+    var buttonH = togglesY - GAP - pad;
 
+    // Inputs stack at the bottom; the button takes whatever height is left.
     return {
         border: { x: MARGIN, y: MARGIN, w: size[0] - MARGIN * 2, h: size[1] - MARGIN * 2 },
-        button: { x: pad, y: pad, w: w, h: freezeY - GAP - pad },
+        button: { cx: size[0] / 2, cy: pad + buttonH / 2, r: Math.max(0, Math.min(w, buttonH) / 2) },
         toggles: [
-            { x: pad, y: freezeY, w: w, h: ROW_H },
-            { x: pad, y: rhythmY, w: w, h: ROW_H }
+            { x: pad, y: togglesY, w: w, h: TOGGLE_H },
+            { x: pad, y: togglesY + TOGGLE_H, w: w, h: TOGGLE_H }
         ],
-        labelY: fieldY - 3,
-        field: { x: pad, y: fieldY, w: w, h: FIELD_H }
+        field: { x: pad, y: fieldY, w: w - ICON_W - 2, h: FIELD_H },
+        copy: { x: pad + w - ICON_W, y: fieldY, w: ICON_W, h: FIELD_H }
     };
 }
 
-// Keeps the jsui at a fixed width and lays the seed [textedit] over the field.
+// Keeps the jsui at a fixed width and lays the seed [textedit] over the field, which a jsui can't make editable.
 function fit() {
     var attrs = ["patching_rect", "presentation_rect"];
     var input = this.patcher && this.patcher.getnamed(INPUT_NAME);
@@ -130,67 +170,69 @@ function fit() {
             input.setattr(attrs[i], rect[0] + field.x + 1, rect[1] + field.y + 1, field.w - 2, field.h - 2);
         }
     }
+
+    if (input) {
+        input.setattr("lines", 1);
+        input.setattr("wordwrap", 0);
+    }
 }
 
 function inside(r, x, y) {
     return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 }
 
-function regenerate() {
+function insideCircle(c, x, y) {
+    return (x - c.cx) * (x - c.cx) + (y - c.cy) * (y - c.cy) <= c.r * c.r;
+}
+
+function generate() {
     if (!STATE.freeze) {
         setValue("freeze", 1);
     }
 
-    messnamed("GENERATE_PHRASE", "generatePhrase");
+    messnamed("GENERATE_PHRASE", "newPhrase");
 }
 
-function generate() {
-    setValue("seed", Math.floor(Math.random() * (MAX_SEED + 1)));
-    regenerate();
-}
+function submitCode(v) {
+    var code = String(v).replace(/^\s+|\s+$/g, "");
 
-function submitSeed(v) {
-    var n = parseInt(String(v), 10);
-
-    if (isNaN(n) || n < 0) {
-        showSeed();
+    if (!code) {
+        showCode();
         return;
     }
 
-    setValue("seed", Math.min(n, MAX_SEED));
-    regenerate();
+    messnamed("PHRASE_CODE", "load", code);
 }
 
-function showSeed() {
-    messnamed("SEED_UI", "set", STATE.seed);
+function showCode() {
+    messnamed("SEED_UI", "set", STATE.phraseCode || "");
+}
+
+// The system clipboard isn't reachable from Max: select the code so the user can press Cmd+C.
+function copyCode() {
+    messnamed("SEED_UI", "select");
+    hintUntil = now() + HINT_MS;
+    new Task(mgraphics.redraw, mgraphics).schedule(HINT_MS);
 }
 
 function text() {
-    submitSeed(arguments[arguments.length - 1]);
-}
-
-function seed() {
-    submitSeed(arguments[arguments.length - 1]);
-}
-
-function msg_int(v) {
-    submitSeed(v);
-}
-
-function msg_float(v) {
-    submitSeed(v);
+    submitCode(arguments[arguments.length - 1]);
 }
 
 function anything() {
-    submitSeed(arguments.length ? arguments[arguments.length - 1] : messagename);
+    submitCode(arguments.length ? arguments[arguments.length - 1] : messagename);
 }
 
 function onclick(x, y) {
     var l = layout();
 
-    if (inside(l.button, x, y)) {
+    if (insideCircle(l.button, x, y)) {
         pressed = true;
         generate();
+    }
+
+    if (inside(l.copy, x, y)) {
+        copyCode();
     }
 
     for (var i = 0; i < TOGGLES.length; i++) {
@@ -236,16 +278,34 @@ function centeredText(str, cx, cy) {
     mgraphics.show_text(str);
 }
 
-function paintButton(r) {
+function circle(c) {
+    mgraphics.ellipse(c.cx - c.r + 0.5, c.cy - c.r + 0.5, c.r * 2 - 1, c.r * 2 - 1);
+}
+
+function paintButton(c) {
     mgraphics.set_line_width(1);
     color(COLOR_ACCENT, pressed ? 1 : 0.15);
-    rounded(r, 4);
+    circle(c);
     mgraphics.fill();
     color(COLOR_ACCENT);
-    rounded(r, 4);
+    circle(c);
     mgraphics.stroke();
     color(pressed ? COLOR_BG : COLOR_VALUE);
-    centeredText("Generate", r.x + r.w / 2, r.y + r.h / 2);
+    paintButtonLabel(c);
+}
+
+function paintButtonLabel(c) {
+    var fontSize = Math.max(FONT_SIZE, Math.round(c.r * 0.42));
+    var lineH = fontSize * 1.05;
+    var top = c.cy - lineH * (BUTTON_LINES.length - 1) / 2;
+
+    mgraphics.set_font_size(fontSize);
+
+    for (var i = 0; i < BUTTON_LINES.length; i++) {
+        centeredText(BUTTON_LINES[i], c.cx, top + i * lineH);
+    }
+
+    mgraphics.set_font_size(FONT_SIZE);
 }
 
 function paintToggle(r, toggle) {
@@ -266,6 +326,65 @@ function paintToggle(r, toggle) {
     dot(on ? sx + SWITCH_W - knob - 2 : sx + knob + 2, cy, knob);
 }
 
+function overlaps(a, b) {
+    return a && b && a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3];
+}
+
+// A [textedit] placed on top of the panel shows the code itself; otherwise the panel draws it.
+function inputVisible() {
+    var input = this.patcher && this.patcher.getnamed(INPUT_NAME);
+    var attr;
+
+    if (!input || !this.box) {
+        return false;
+    }
+
+    attr = this.box.getattr("presentation") ? "presentation_rect" : "patching_rect";
+
+    return !!overlaps(input.getattr(attr), this.box.getattr(attr));
+}
+
+function fitText(str, width) {
+    if (mgraphics.text_measure(str)[0] <= width) {
+        return str;
+    }
+
+    while (str.length > 1 && mgraphics.text_measure(str + "\u2026")[0] > width) {
+        str = str.slice(0, -1);
+    }
+
+    return str + "\u2026";
+}
+
+function paintCode(r) {
+    var hint = now() < hintUntil;
+
+    if (!hint && inputVisible()) {
+        return;
+    }
+
+    color(hint ? COLOR_ACCENT : COLOR_VALUE);
+    mgraphics.move_to(r.x + 3, r.y + r.h / 2 + FONT_SIZE / 2 - 1);
+    mgraphics.show_text(hint ? "\u2318C to copy" : fitText(STATE.phraseCode || "", r.w - 6));
+}
+
+function paintCopyIcon(r) {
+    var s = 6;
+    var x = r.x + (r.w - s) / 2 + 1;
+    var y = r.y + (r.h - s) / 2 + 1;
+
+    mgraphics.set_line_width(1);
+    color(COLOR_LABEL);
+    mgraphics.rectangle_rounded(x - 2.5, y - 2.5, s, s, 2, 2);
+    mgraphics.stroke();
+    color(COLOR_BG);
+    mgraphics.rectangle(x, y, s, s);
+    mgraphics.fill();
+    color(COLOR_VALUE);
+    mgraphics.rectangle_rounded(x + 0.5, y + 0.5, s, s, 2, 2);
+    mgraphics.stroke();
+}
+
 function paint() {
     size = [mgraphics.size[0], mgraphics.size[1]];
 
@@ -284,13 +403,12 @@ function paint() {
         paintToggle(l.toggles[i], TOGGLES[i]);
     }
 
-    color(COLOR_LABEL);
-    mgraphics.move_to(l.field.x, l.labelY);
-    mgraphics.show_text("Seed");
     mgraphics.set_line_width(1);
     color(COLOR_TRACK);
     rounded(l.field, 3);
     mgraphics.stroke();
+    paintCode(l.field);
+    paintCopyIcon(l.copy);
 
     color(COLOR_BORDER);
     rounded(l.border, CORNER);
@@ -298,8 +416,12 @@ function paint() {
 }
 
 function onStateChanged(key) {
-    if (key === "seed") {
-        showSeed();
+    if (key === "phraseCode") {
+        showCode();
+    }
+
+    if (key === "freeze") {
+        followFreeze();
     }
 
     mgraphics.redraw();
@@ -308,7 +430,7 @@ function onStateChanged(key) {
 function loadbang() {
     bind();
     fit();
-    showSeed();
+    showCode();
 }
 
 bind();

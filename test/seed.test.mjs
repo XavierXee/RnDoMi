@@ -2,15 +2,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createMax } from "./max-sandbox.mjs";
 
-function rectHolder(rects) {
+function rectHolder(rects, attrs = {}) {
   return {
     rects,
-    getattr: (name) => rects[name],
+    getattr: (name) => (name in attrs ? attrs[name] : rects[name]),
     setattr: (name, ...v) => { rects[name] = v; },
   };
 }
 
-function setup({ values = {}, named = true, height = 169 } = {}) {
+function setup({ values = {}, input = true, inputOnPanel = true, height = 169 } = {}) {
   const max = createMax();
   max.load("src/core/_state.js");
   max.connect("SET_PARAM", "src/core/_state.js");
@@ -21,7 +21,7 @@ function setup({ values = {}, named = true, height = 169 } = {}) {
   function object(key) {
     if (!objects[key]) {
       objects[key] = {
-        value: key in values ? values[key] : 0,
+        value: key in values ? values[key] : Number(max.state[key]),
         listeners: [],
         getvalueof() { return this.value; },
         message(type, value) {
@@ -32,119 +32,179 @@ function setup({ values = {}, named = true, height = 169 } = {}) {
     }
     return objects[key];
   }
-  const input = rectHolder({ patching_rect: [0, 0, 50, 20], presentation_rect: [0, 0, 50, 20] });
-  const patcher = { getnamed: (key) => (key === "seedInput" ? input : named ? object(key) : null) };
+  const at = inputOnPanel ? [111, 346, 58, 12] : [500, 900, 58, 12];
+  const field = rectHolder({ patching_rect: at, presentation_rect: at });
+  const patcher = { getnamed: (key) => (key === "seedInput" ? (input ? field : null) : object(key)) };
   const box = rectHolder({ patching_rect: [100, 200, 150, height], presentation_rect: [10, 0, 150, height] });
-  const mgraphics = { size: [80, height], init() {}, redraw() {}, text_measure: () => [30, 9] };
+  const tasks = [];
+  function Task(fn, owner) { this.schedule = (delay) => tasks.push({ delay, run: () => fn.call(owner) }); }
+  const shown = [];
+  const mgraphics = { size: [110, height], init() {}, redraw() {}, text_measure: (s) => [s.length * 5, 9],
+    show_text: (s) => shown.push(s) };
   for (const fn of ["set_source_rgba", "rectangle", "rectangle_rounded", "ellipse", "fill", "stroke", "set_line_width",
-    "move_to", "show_text", "select_font_face", "set_font_size"]) mgraphics[fn] = () => {};
-  const seed = max.load("src/max/_seed.jsui.js", { mgraphics, patcher, MaxobjListener, box });
+    "move_to", "select_font_face", "set_font_size"]) mgraphics[fn] = () => {};
+  const seed = max.load("src/max/_seed.jsui.js", { mgraphics, patcher, MaxobjListener, box, Task });
+  let time = 0;
+  seed.now = () => time;
   seed.paint();
   const center = (r) => [r.x + r.w / 2, r.y + r.h / 2];
-  return { max, seed, state: max.state, objects, input, box, center };
+  // In Max, STATE_CHANGED reaches the panel through [receive]; replay it here.
+  const notify = () => {
+    for (const m of max.sent.splice(0)) if (m.receiver === "STATE_CHANGED") seed.onStateChanged(m.args[1]);
+  };
+  return { max, seed, state: max.state, objects, field, box, center, tasks, shown, notify, setTime: (t) => { time = t; } };
 }
 
-const generated = (max) => max.sent.filter((m) => m.receiver === "GENERATE_PHRASE").length;
+const sent = (max, receiver) => max.sent.filter((m) => m.receiver === receiver);
 
-test("the jsui is twice the keyboard width and keeps its height", () => {
-  const { box } = setup();
-  assert.deepEqual(box.rects.patching_rect, [100, 200, 80, 169]);
-  assert.deepEqual(box.rects.presentation_rect, [10, 0, 80, 169]);
-});
-
-test("the seed text field is laid over the field area", () => {
-  const { seed, input } = setup();
+test("the jsui keeps its fixed width and lays the editable text field over the code field", () => {
+  const { seed, box, field } = setup({ inputOnPanel: false });
+  assert.deepEqual(box.rects.patching_rect, [100, 200, 110, 169]);
   const f = seed.layout().field;
-  assert.deepEqual(input.rects.presentation_rect, [10 + f.x + 1, f.y + 1, f.w - 2, f.h - 2]);
-  assert.deepEqual(input.rects.patching_rect, [100 + f.x + 1, 200 + f.y + 1, f.w - 2, f.h - 2]);
+  assert.deepEqual(field.rects.patching_rect, [100 + f.x + 1, 200 + f.y + 1, f.w - 2, f.h - 2]);
+  assert.deepEqual(field.rects.presentation_rect, [10 + f.x + 1, f.y + 1, f.w - 2, f.h - 2]);
 });
 
-test("generate picks a new seed, turns freeze on and regenerates", () => {
-  const { max, seed, state, objects, center } = setup();
-  seed.onclick(...center(seed.layout().button));
+test("the text field is kept to a single line without wrapping", () => {
+  const { field } = setup();
+  assert.deepEqual(field.rects.lines, [1]);
+  assert.deepEqual(field.rects.wordwrap, [0]);
+});
+
+test("the inputs stack at the bottom and the button fills the space above", () => {
+  const { seed } = setup();
+  const l = seed.layout();
+  const [phrase, rhythm] = l.toggles;
+  assert.equal(rhythm.y, phrase.y + phrase.h);
+  assert.equal(l.field.y - (rhythm.y + rhythm.h), 3);
+  assert.equal(l.field.y + l.field.h, 169 - 10 - 5);
+  assert.equal(l.button.cy - l.button.r, 10);
+  assert.equal(l.button.cy + l.button.r, phrase.y - 4);
+});
+
+test("each toggle fits its label and switch on one line", () => {
+  const { seed } = setup();
+  for (const t of seed.layout().toggles) assert.ok("Freeze rhythm".length * 5 + 6 + 18 <= t.w);
+});
+
+test("the button reads rnd over omi and the field has no label", () => {
+  const { seed, shown } = setup();
+  shown.length = 0;
+  seed.paint();
+  const i = shown.indexOf("rnd");
+  assert.equal(shown[i + 1], "omi");
+  assert.ok(!shown.includes("Seed"));
+});
+
+test("clicking inside the circle generates a new phrase and freezes it", () => {
+  const { max, seed, state } = setup();
+  const b = seed.layout().button;
+  seed.onclick(b.cx, b.cy);
   assert.equal(state.freeze, true);
-  assert.equal(objects.freeze.value, 1);
-  assert.equal(state.seed, objects.seed.value);
-  assert.ok(Number.isInteger(state.seed) && state.seed >= 0 && state.seed <= 16777215);
-  assert.equal(generated(max), 1);
+  assert.equal(sent(max, "GENERATE_PHRASE").at(-1).args[0], "newPhrase");
 });
 
-test("the seed is set before the phrase is regenerated", () => {
-  const { max, seed, center } = setup();
-  seed.onclick(...center(seed.layout().button));
-  const order = max.sent.map((m) => m.receiver);
-  assert.ok(order.lastIndexOf("SET_PARAM") < order.indexOf("GENERATE_PHRASE"));
+test("clicking the corner outside the circle does nothing", () => {
+  const { max, seed } = setup();
+  const b = seed.layout().button;
+  seed.onclick(b.cx - b.r + 1, b.cy - b.r + 1);
+  assert.equal(sent(max, "GENERATE_PHRASE").length, 0);
 });
 
-test("the button lights while pressed", () => {
-  const { seed, center } = setup();
-  seed.onclick(...center(seed.layout().button));
-  assert.equal(seed.pressed, true);
-  seed.ondrag(0, 0, 0);
-  assert.equal(seed.pressed, false);
+test("toggles are labelled freeze phrase and freeze rhythm", () => {
+  const { seed, shown } = setup();
+  shown.length = 0;
+  seed.paint();
+  assert.ok(shown.includes("Freeze phrase"));
+  assert.ok(shown.includes("Freeze rhythm"));
 });
 
-test("toggles flip freeze and rhythm regeneration", () => {
+test("freeze rhythm on keeps the rhythm, off lets it regenerate", () => {
   const { seed, state, center } = setup();
-  const [freeze, rhythm] = seed.layout().toggles;
-  seed.onclick(...center(freeze));
-  assert.equal(state.freeze, true);
-  seed.onclick(...center(rhythm));
-  assert.equal(state.regenerateRhythm, true);
-  seed.onclick(...center(rhythm));
-  assert.equal(state.regenerateRhythm, false);
+  assert.equal(state.freezeRhythm, false);
+  seed.onclick(...center(seed.layout().toggles[1]));
+  assert.equal(state.freezeRhythm, true);
 });
 
-test("typing a seed stores it and regenerates straight away", () => {
+test("freezing the phrase freezes the rhythm, unfreezing restores it", () => {
+  const { seed, state, center, notify } = setup({ values: { freeze: 0, freezeRhythm: 0 } });
+  const [phrase] = seed.layout().toggles;
+  seed.onclick(...center(phrase));
+  notify();
+  assert.deepEqual([state.freeze, state.freezeRhythm], [true, true]);
+  seed.onclick(...center(phrase));
+  notify();
+  assert.deepEqual([state.freeze, state.freezeRhythm], [false, false]);
+});
+
+test("a rhythm that was already frozen stays frozen after unfreezing", () => {
+  const { seed, state, center, notify } = setup({ values: { freeze: 0, freezeRhythm: 1 } });
+  const [phrase] = seed.layout().toggles;
+  seed.onclick(...center(phrase));
+  notify();
+  seed.onclick(...center(phrase));
+  notify();
+  assert.deepEqual([state.freeze, state.freezeRhythm], [false, true]);
+});
+
+test("restoring a frozen phrase on load does not touch the rhythm toggle", () => {
+  const { state } = setup({ values: { freeze: 1, freezeRhythm: 0 } });
+  assert.deepEqual([state.freeze, state.freezeRhythm], [true, false]);
+});
+
+test("the code is drawn in the field when there is no text field", () => {
+  const { seed, state, shown } = setup({ input: false });
+  state.phraseCode = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  shown.length = 0;
+  seed.paint();
+  const code = shown.find((s) => s.startsWith("ABC"));
+  assert.ok(code.endsWith("…"));
+  assert.ok(code.length * 5 <= seed.layout().field.w - 6);
+});
+
+test("the code is not drawn twice under a text field placed on the panel", () => {
+  const { seed, state, shown } = setup({ inputOnPanel: true });
+  state.phraseCode = "ABCDEF";
+  shown.length = 0;
+  seed.paint();
+  assert.ok(!shown.some((s) => s.startsWith("ABC")));
+});
+
+test("a new code is shown in the text field", () => {
   const { max, seed, state } = setup();
-  seed.text("4242");
-  assert.equal(state.seed, 4242);
-  assert.equal(state.freeze, true);
-  assert.equal(generated(max), 1);
+  state.phraseCode = "Zz09";
+  seed.onStateChanged("phraseCode");
+  assert.deepEqual(sent(max, "SEED_UI").at(-1).args, ["set", "Zz09"]);
 });
 
-test("plain numbers from the text field are accepted too", () => {
-  const { seed, state } = setup();
-  seed.msg_int(31);
-  assert.equal(state.seed, 31);
+test("typing a code loads it", () => {
+  const { max, seed } = setup();
+  seed.text("  AbC-_9 ");
+  assert.deepEqual(sent(max, "PHRASE_CODE").at(-1).args, ["load", "AbC-_9"]);
 });
 
-test("invalid seeds are rejected and the field is reset", () => {
-  const { max, seed, state } = setup({ values: { seed: 7 } });
-  max.sent.length = 0;
-  seed.text("abc");
-  assert.equal(state.seed, 7);
-  assert.equal(generated(max), 0);
-  assert.deepEqual(max.sent.at(-1), { receiver: "SEED_UI", args: ["set", 7] });
-});
-
-test("seeds above the limit are clamped", () => {
-  const { seed, state } = setup();
-  seed.seed(99999999);
-  assert.equal(state.seed, 16777215);
-});
-
-test("restored values reach the engine on load", () => {
-  const { state } = setup({ values: { seed: 123, regenerateRhythm: 1, freeze: 1 } });
-  assert.equal(state.seed, 123);
-  assert.equal(state.regenerateRhythm, true);
-  assert.equal(state.freeze, true);
-});
-
-test("a seed change updates the text field", () => {
-  const { max, seed, state } = setup();
-  state.seed = 55;
-  seed.onStateChanged("seed");
-  assert.deepEqual(max.sent.at(-1), { receiver: "SEED_UI", args: ["set", 55] });
+test("the copy icon selects the code and shows a Cmd+C hint for a moment", () => {
+  const { max, seed, shown, tasks, setTime, center } = setup();
+  setTime(1000);
+  seed.onclick(...center(seed.layout().copy));
+  assert.deepEqual(sent(max, "SEED_UI").at(-1).args, ["select"]);
+  shown.length = 0;
+  seed.paint();
+  assert.ok(shown.includes("⌘C to copy"));
+  assert.equal(tasks.at(-1).delay, 1500);
+  setTime(2600);
+  shown.length = 0;
+  seed.paint();
+  assert.ok(!shown.includes("⌘C to copy"));
 });
 
 test("every colour is set with four components", () => {
   const max = setup();
   const calls = [];
-  const { seed } = max;
-  seed.mgraphics.set_source_rgba = (...args) => calls.push(args);
-  seed.onclick(...max.center(seed.layout().button));
-  seed.paint();
+  max.seed.mgraphics.set_source_rgba = (...args) => calls.push(args);
+  const b = max.seed.layout().button;
+  max.seed.onclick(b.cx, b.cy);
+  max.seed.paint();
   assert.ok(calls.length > 0);
   for (const args of calls) assert.equal(args.length, 4);
 });

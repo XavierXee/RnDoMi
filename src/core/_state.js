@@ -81,7 +81,7 @@ var defaultState = {
     beatRate: 4,
     freeze: false,
     seed: 0,
-    regenerateRhythm: false,
+    freezeRhythm: false,
     sequenceBlueprint: [],
     offsetLowerBoundary: 0,
     offsetUpperBoundary: 0,
@@ -152,7 +152,7 @@ var paramSpecs = {
     driftMpe: TOGGLE,
     driftDistribution: range(0, 1, 0.01),
     freeze: TOGGLE,
-    regenerateRhythm: TOGGLE,
+    freezeRhythm: TOGGLE,
     seed: range(0, 16777215, 1),
     envOn: TOGGLE,
     rndCcOn: TOGGLE

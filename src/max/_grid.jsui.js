@@ -19,6 +19,7 @@ var COLOR_EMPTY = [1, 1, 1, 0.08];
 var COLOR_EMPTY_SCALE = [1, 1, 1, 0.22];
 var COLOR_NOTE = [1, 0.65, 0.2];
 var COLOR_ACCENT = [0.35, 0.85, 1];
+var COLOR_PLAYING = [1, 1, 1];
 var COLOR_PLAYHEAD = [1, 1, 1, 0.05];
 
 var currentStep = -1;
@@ -89,16 +90,13 @@ function editCell(step, row) {
     } else if (note) {
         note.pitch += row - noteRow(note);
         note.relativePitch = mod(note.pitch - STATE.root, ROWS);
+        note.locked = true;
     } else {
         STATE.phrase[step] = newNote(row);
+        STATE.phrase[step].locked = true;
     }
 
-    if (!STATE.freeze) {
-        STATE.freeze = true;
-        messnamed("FREEZE_UI", "set", 1);
-        messnamed("STATE_CHANGED", "onStateChanged", "freeze");
-    }
-
+    messnamed("PHRASE_EDITED", "onPhraseEdited");
     messnamed("SAVE_STATE", "saveState");
     mgraphics.redraw();
 }
@@ -133,6 +131,10 @@ function haloShape(halo, t) {
     };
 }
 
+function isFrozen(note) {
+    return !!(STATE.freeze || note.locked);
+}
+
 function startHalo(step) {
     var note = STATE.phrase && STATE.phrase[step];
 
@@ -143,6 +145,7 @@ function startHalo(step) {
     halos.push({
         step: step,
         row: noteRow(note),
+        frozen: isFrozen(note),
         velocity: note.velocity,
         duration: note.duration,
         start: now()
@@ -223,7 +226,7 @@ function paint() {
             continue;
         }
 
-        color(COLOR_ACCENT, shape.alpha);
+        color(halos[i].frozen ? COLOR_ACCENT : COLOR_NOTE, shape.alpha);
         dot(x(halos[i].step), y(halos[i].row), l.radius * (1 + 1.8 * shape.scale));
     }
 
@@ -233,7 +236,7 @@ function paint() {
             continue;
         }
 
-        color(i === currentStep ? COLOR_ACCENT : COLOR_NOTE, 0.35 + 0.65 * note.velocity / 127);
+        color(i === currentStep ? COLOR_PLAYING : (isFrozen(note) ? COLOR_ACCENT : COLOR_NOTE), 0.35 + 0.65 * note.velocity / 127);
         dot(x(i), y(noteRow(note)), l.radius);
     }
 
