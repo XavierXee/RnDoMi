@@ -26,9 +26,10 @@ const isDevice = (name) => name.endsWith(".amxd");
 function copy(name, from) {
   const to = path.join(dest, name);
   if (fs.existsSync(to) && fs.readFileSync(to).equals(fs.readFileSync(from))) return;
-  // Max saves device edits to the deployed copy; never clobber them silently.
-  if (isDevice(name) && !force && fs.existsSync(to) && fs.statSync(to).mtimeMs > fs.statSync(from).mtimeMs) {
-    console.warn(`skip ${name}: deployed copy is newer (npm run pull:device, or --force)`);
+  // Max saves edits to the deployed copies; never clobber them silently.
+  if (!force && fs.existsSync(to) && fs.statSync(to).mtimeMs > fs.statSync(from).mtimeMs) {
+    const hint = isDevice(name) ? "npm run pull:device" : "copy it back to src";
+    console.warn(`skip ${name}: deployed copy is newer (${hint}, or --force)`);
     return;
   }
   fs.copyFileSync(from, to);

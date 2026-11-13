@@ -63,6 +63,7 @@ var defaultState = {
 
     // Groove / rhythm behavior
     swingAmount: 0.0,   // 0 - 1
+    drift: 0.0,         // 0 - 1
     chance: 2,          // rhythm density
     tension: 0,         // builds automatically
     tensionMax: 8,
@@ -122,10 +123,60 @@ STATE.envelopeShapes = [
     "reverseSquare", "reverseSine", "logUp", "logDown", "expUp", "expDown"
 ];
 
+function range(min, max, step) {
+    return { type: "number", min: min, max: max, step: step };
+}
+
+var TOGGLE = { type: "toggle" };
+
+var paramSpecs = {
+    root: range(0, 127, 1),
+    scaleName: { type: "menu" },
+    octaveMin: range(-4, 4, 1),
+    octavesMax: range(-4, 4, 1),
+    velocityMin: range(0, 127, 1),
+    velocityMax: range(0, 127, 1),
+    durationMin: range(0, 2000, 10),
+    durationMax: range(0, 2000, 10),
+    phraseLength: range(1, 32, 1),
+    beatRate: range(1, 16, 1),
+    chance: range(1, 8, 1),
+    swingAmount: range(0, 1, 0.01),
+    drift: range(0, 1, 0.01),
+    freeze: TOGGLE,
+    regenerateRhythm: TOGGLE,
+    seed: range(0, 16777215, 1),
+    envOn: TOGGLE,
+    rndCcOn: TOGGLE
+};
+
+for (n = 1; n <= ENVELOPE_SLOTS; n++) {
+    paramSpecs["env" + n + "On"] = TOGGLE;
+    paramSpecs["env" + n + "Shape"] = range(0, STATE.envelopeShapes.length - 1, 1);
+    paramSpecs["env" + n + "Cc"] = range(0, 127, 1);
+    paramSpecs["env" + n + "Min"] = range(1, 127, 1);
+    paramSpecs["env" + n + "Max"] = range(1, 127, 1);
+}
+
+for (n = 1; n <= RANDOM_SLOTS; n++) {
+    paramSpecs["rndCc" + n + "On"] = TOGGLE;
+    paramSpecs["rndCc" + n + "Number"] = range(0, 127, 1);
+    paramSpecs["rndCc" + n + "Min"] = range(1, 127, 1);
+    paramSpecs["rndCc" + n + "Max"] = range(1, 127, 1);
+}
+
+STATE.paramSpecs = paramSpecs;
+
 STATE_DICT.parse(JSON.stringify(STATE));
 
 function saveState() {
     outlet(0, "parse", JSON.stringify(STATE))
+}
+
+function constrain(spec, value) {
+    var snapped = spec.min + Math.round((value - spec.min) / spec.step) * spec.step;
+
+    return Math.max(spec.min, Math.min(spec.max, +snapped.toFixed(4)));
 }
 
 function setParam(key, value) {
@@ -145,6 +196,15 @@ function setParam(key, value) {
 
     if (typeof defaultState[key] === "boolean") {
         value = !!value;
+    }
+
+    if (paramSpecs[key] && paramSpecs[key].type === "number") {
+        value = constrain(paramSpecs[key], Number(value));
+
+        if (isNaN(value)) {
+            post("setParam: " + key + " is not a number\n");
+            return;
+        }
     }
 
     STATE[key] = value;

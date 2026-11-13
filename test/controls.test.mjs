@@ -175,3 +175,22 @@ test("float objects for integer parameters are rounded to the control step", () 
   objects.octaveMin.message("float", -9);
   assert.equal(state.octaveMin, -4);
 });
+
+test("drift is a percentage slider next to swing", () => {
+  const { controls, state, messages, cell } = setup();
+  const c = cell("drift");
+  assert.equal(c.control.label, "Drift");
+  controls.onclick(at(c, 0.4), c.trackY);
+  assert.deepEqual(messages.at(-1), ["drift", "float", 0.4]);
+  assert.equal(state.drift, 0.4);
+  assert.equal(controls.valueText(c.control), "40%");
+});
+
+test("the panel's fallback ranges match the engine's parameter table", () => {
+  const { controls, state } = setup();
+  for (const c of controls.CONTROLS) {
+    const spec = state.paramSpecs[c.key || c.keys[0]];
+    if (spec.type !== "number") continue;
+    assert.equal(`${c.min} ${c.max} ${c.step}`, `${spec.min} ${spec.max} ${spec.step}`, c.label);
+  }
+});

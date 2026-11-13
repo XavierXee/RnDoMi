@@ -39,7 +39,8 @@ var CONTROLS = [
     { key: "phraseLength", label: "Length", type: "slider", min: 1, max: 32, step: 1 },
     { key: "beatRate", label: "Rate", type: "slider", min: 1, max: 16, step: 1 },
     { key: "chance", label: "Chance", type: "slider", min: 1, max: 8, step: 1, format: oneIn },
-    { key: "swingAmount", label: "Swing", type: "slider", min: 0, max: 1, step: 0.01, format: percent }
+    { key: "swingAmount", label: "Swing", type: "slider", min: 0, max: 1, step: 0.01, format: percent },
+    { key: "drift", label: "Drift", type: "slider", min: 0, max: 1, step: 0.01, format: percent }
 ];
 
 var size = [1, 1];
@@ -117,6 +118,8 @@ function toObject(key, value) {
 function fromObject(key, value) {
     var control = controlFor(key);
 
+    applySpecs();
+
     if (isDiscrete(control)) {
         return Math.round(value);
     }
@@ -182,7 +185,29 @@ function loadbang() {
     bind();
 }
 
+// Ranges above are fallbacks until _state.js has loaded; the engine's table wins.
+function applySpecs() {
+    var specs = STATE.paramSpecs;
+    var spec;
+
+    if (!specs) {
+        return;
+    }
+
+    for (var i = 0; i < CONTROLS.length; i++) {
+        spec = specs[CONTROLS[i].key || CONTROLS[i].keys[0]];
+
+        if (spec && spec.type === "number") {
+            CONTROLS[i].min = spec.min;
+            CONTROLS[i].max = spec.max;
+            CONTROLS[i].step = spec.step;
+        }
+    }
+}
+
 function layout() {
+    applySpecs();
+
     var pad = MARGIN + INSET;
     var columns = Math.ceil(CONTROLS.length / ROWS_PER_COLUMN);
     var cw = (size[0] - pad * 2 - COLUMN_GAP * (columns - 1)) / columns;
