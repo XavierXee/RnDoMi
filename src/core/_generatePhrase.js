@@ -138,7 +138,6 @@ function generatePhraseNotes() {
 
 function set_phrase() {
     if (!STATE.rhythm || !STATE.rhythm.length || STATE.regenerateRhythm) {
-        post("here");
         STATE.rhythm = generatePhraseRhythm();
     }
 
